@@ -3,7 +3,7 @@ import sys
 from collections import defaultdict
 
 import numpy as np
-import pandas as pd
+from tabulate import tabulate
 
 
 def process_data(file_name: str):
@@ -151,66 +151,79 @@ def get_corrections(word: str, probs: dict, vocab: set, n=2, verbose=False) -> l
     return n_best
 
 
-def min_edit_distance(source, target, ins_cost=1, del_cost=1, rep_cost=2):
-    m = len(source)
-    n = len(target)
-    D = np.zeros((m + 1, n + 1), dtype=int)
-
-    for row in range(1, m + 1):
-        D[row, 0] = D[row - 1, 0] + ins_cost
-
-    for col in range(1, n + 1):
-        D[0, col] = D[0, col - 1] + ins_cost
-
-    for row in range(1, m + 1):
-        for col in range(1, n + 1):
-            r_cost = rep_cost
-            if source[row - 1] == target[col - 1]:
-                r_cost = 0
-            D[row, col] = min(
-                D[row - 1, col] + del_cost,
-                D[row, col - 1] + ins_cost,
-                D[row - 1, col - 1] + r_cost
-            )
-
-    med = D[m, n]
-
-    return D, med
-
-
-def min_edit_distance_with_backtrace(source: str, target: str, ins_cost=1, del_cost=1, rep_cost=2):
+def min_edit_distance(source, target, insert_cost=1, delete_cost=1, replace_cost=2):
     """
-    
-    
+    Compute the minimum edit distance matrix between source and target strings
+
     :param source: A string corresponding to the string you are starting with
     :param target: A string corresponding to the string you want to end with
-    :param ins_cost: An integer setting the insert cost
-    :param del_cost: An integer setting the delete cost
-    :param rep_cost: An integer setting the replacement cost
+    :param insert_cost: An integer setting the insert cost
+    :param delete_cost: An integer setting the delete cost
+    :param replace_cost: An integer setting the replacement cost
     :return:
         - distances: a matrix of len(source)+1 by len(target)+1 containing minimum edit distances
         - med: the minimum edit distance (med) required to convert the source string to the target
     """
     m = len(source)
     n = len(target)
-    top_char, left_char, top_left_char = " ^ ", " < ", " \\ "
+    distances = np.zeros((m + 1, n + 1), dtype=int)
+
+    for row in range(1, m + 1):
+        distances[row, 0] = distances[row - 1, 0] + delete_cost
+
+    for col in range(1, n + 1):
+        distances[0, col] = distances[0, col - 1] + insert_cost
+
+    for row in range(1, m + 1):
+        for col in range(1, n + 1):
+            r_cost = replace_cost
+            if source[row - 1] == target[col - 1]:
+                r_cost = 0
+            distances[row, col] = min(
+                distances[row - 1, col] + delete_cost,
+                distances[row, col - 1] + insert_cost,
+                distances[row - 1, col - 1] + r_cost
+            )
+
+    med = distances[m, n]
+
+    return distances, med
+
+
+def min_edit_distance_with_backtrace(source: str, target: str, insert_cost=1, delete_cost=1, replace_cost=2):
+    """
+    Compute the minimum edit distance matrix including the backtrace between source and target strings
+
+    
+    :param source: A string corresponding to the string you are starting with
+    :param target: A string corresponding to the string you want to end with
+    :param insert_cost: An integer setting the insert cost
+    :param delete_cost: An integer setting the delete cost
+    :param replace_cost: An integer setting the replacement cost
+    :return:
+        - distances: a matrix of len(source)+1 by len(target)+1 containing minimum edit distances
+        - med: the minimum edit distance (med) required to convert the source string to the target
+    """
+    m = len(source)
+    n = len(target)
+    top_char, left_char, top_left_char = "↑ ", "← ", "↖ "
 
     distances = np.empty((m + 1, n + 1), dtype=tuple)
     for i in range(distances.shape[0]):
         for j in range(distances.shape[1]):
-            distances[i, j] = ([], 0)
+            distances[i, j] = ("", 0)
 
     for row in range(1, m + 1):  # Fill in column 0, from row 1 to row m, both inclusive
-        distances[row, 0] = (top_char, distances[row - 1, 0][1] + ins_cost)
+        distances[row, 0] = (top_char, distances[row - 1, 0][1] + delete_cost)
 
     for col in range(1, n + 1):  # Fill in row 0, for all columns from 1 to n, both inclusive
-        distances[0, col] = (left_char, distances[0, col - 1][1] + ins_cost)
+        distances[0, col] = (left_char, distances[0, col - 1][1] + insert_cost)
 
     for row in range(1, m + 1):
         for col in range(1, n + 1):
-            r_cost = 0 if source[row - 1] == target[col - 1] else rep_cost
-            delete = distances[row - 1, col][1] + del_cost
-            insert = distances[row, col - 1][1] + ins_cost
+            r_cost = 0 if source[row - 1] == target[col - 1] else replace_cost
+            delete = distances[row - 1, col][1] + delete_cost
+            insert = distances[row, col - 1][1] + insert_cost
             replace = distances[row - 1, col - 1][1] + r_cost
             min_value = min(delete, insert, replace)
 
@@ -230,17 +243,24 @@ def min_edit_distance_with_backtrace(source: str, target: str, ins_cost=1, del_c
     return distances, med
 
 
+def print_matrix_backtrace(matrix, source: str, target: str):
+    headers = [letter for letter in "#" + target]
+    source = "#" + source
+    rows = []
+
+    for i, row in enumerate(matrix):
+        row_values = [f"{str(cell[0])} {cell[1]}" for cell in row]
+        rows.append([f"{source[i]}"] + row_values)
+
+    print(tabulate(rows, headers, tablefmt="pretty"))
+
+
 def main():
-    source = 'loveliness'
-    target = 'lightness'
+    source = 'intention'
+    target = 'execution'
     matrix, min_edits = min_edit_distance_with_backtrace(source, target)
     print("minimum edits: ", min_edits, "\n")
-    idx = list(source)
-    idx.insert(0, '#')
-    cols = list(target)
-    cols.insert(0, '#')
-    df = pd.DataFrame(matrix, index=idx, columns=cols)
-    print(df)
+    print_matrix_backtrace(matrix, source, target)
 
 
 if __name__ == '__main__':
