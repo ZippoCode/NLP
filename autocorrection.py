@@ -176,9 +176,8 @@ def min_edit_distance(source, target, insert_cost=1, delete_cost=1, replace_cost
 
     for row in range(1, m + 1):
         for col in range(1, n + 1):
-            r_cost = replace_cost
-            if source[row - 1] == target[col - 1]:
-                r_cost = 0
+            r_cost = 0 if source[row - 1] == target[col - 1] else replace_cost
+
             distances[row, col] = min(
                 distances[row - 1, col] + delete_cost,
                 distances[row, col - 1] + insert_cost,
@@ -249,7 +248,10 @@ def print_matrix_backtrace(matrix, source: str, target: str):
     rows = []
 
     for i, row in enumerate(matrix):
-        row_values = [f"{str(cell[0])} {cell[1]}" for cell in row]
+        if len(row) == 2:
+            row_values = [f"{str(cell[0])} {cell[1]}" for cell in row]
+        else:
+            row_values = [f"{cell}" for cell in row]
         rows.append([f"{source[i]}"] + row_values)
 
     print(tabulate(rows, headers, tablefmt="pretty"))
@@ -258,7 +260,7 @@ def print_matrix_backtrace(matrix, source: str, target: str):
 def main():
     source = 'intention'
     target = 'execution'
-    matrix, min_edits = min_edit_distance_with_backtrace(source, target)
+    matrix, min_edits = min_edit_distance(source, target)
     print("minimum edits: ", min_edits, "\n")
     print_matrix_backtrace(matrix, source, target)
 
