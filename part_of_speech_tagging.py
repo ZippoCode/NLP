@@ -84,18 +84,23 @@ def preprocess(vocab, data_fp):
     return orig, prep
 
 
-def get_word_tag(line, vocab):
+def get_word_tag(line: str, vocab: set):
+    """
+        Extracts the (word, tag) pair from a line of the corpus.
+
+    :param line: A line from the corpus containing a (word, tag) pair.
+    :param vocab: Set of words in the vocabulary.
+    :return:
+        - tuple: A (word, tag) pair extracted from the line.
+    """
     if not line.split():
         word = "--n--"
         tag = "--s--"
-        return word, tag
     else:
         word, tag = line.split()
         if word not in vocab:
-            # Handle unknown words
             word = assign_unk(word)
-        return word, tag
-    return None
+    return word, tag
 
 
 def create_dictionaries(training_corpus: list, vocab: dict, verbose=True) -> tuple[dict, dict, dict]:
@@ -290,6 +295,7 @@ def viterbi_backward(best_probs: np.ndarray, best_paths: np.ndarray, corpus: lis
 
 def compute_accuracy(pred: list, y: list) -> float:
     """
+        Compute the accuracy of the predictions
 
     :param pred: A list of predicted parts-of-speech.
     :param y: A list of lines where each word is separated by a '\t' (i.e., word \t tag).
@@ -301,7 +307,6 @@ def compute_accuracy(pred: list, y: list) -> float:
     total = 0
 
     for prediction, y in zip(pred, y):
-
         word_tag_tuple = y.split()
         if len(word_tag_tuple) != 2:
             continue
@@ -314,29 +319,35 @@ def compute_accuracy(pred: list, y: list) -> float:
 
 
 def main():
+    # Read training corpus and vocabulary
     training_corpus = read_lines("data/WSJ_02-21.pos")
     voc_l = read_vocabulary("data/hmm_vocab.txt")
-    vocab = {}
 
     # Get the index of the corresponding words.
-    for i, word in enumerate(sorted(voc_l)):
-        vocab[word] = i
+    vocab = {word: i for i, word in enumerate(sorted(voc_l))}
 
+    # Read test data and preprocess it
     y = read_lines("data/WSJ_24.pos")
     _, prep = preprocess(vocab, "./data/test.words")
 
+    # Create dictionaries and states
     emission_counts, transition_counts, tag_counts = create_dictionaries(training_corpus, vocab)
     states = sorted(tag_counts.keys())
 
+    # Evaluate accuracy using predict_pos
     accuracy_predict_pos = predict_pos(prep, y, emission_counts, vocab, states)
-    print(f"Accuracy of prediction using predict_pos is {accuracy_predict_pos:.4f}")
+    print(f"Accuracy of prediction using predict_pos: {accuracy_predict_pos:.4f}")
 
+    # Configure smoothing parameter
     alpha = 0.001
+
+    # Create transition and emission matrices
     A = create_transition_matrix(alpha, tag_counts, transition_counts)
     B = create_emission_matrix(alpha, tag_counts, emission_counts, vocab)
-    best_probs, best_paths = best_probs, best_paths = viterbi_forward(states, A, B, prep, vocab, len(tag_counts))
-    pred = viterbi_backward(best_probs, best_paths, prep, states)
 
+    # Run Viterbi algorithm
+    best_probs, best_paths = viterbi_forward(states, A, B, prep, vocab, len(tag_counts))
+    pred = viterbi_backward(best_probs, best_paths, prep, states)
     print(f"Accuracy of the Viterbi algorithm is {compute_accuracy(pred, y):.4f}")
 
 
