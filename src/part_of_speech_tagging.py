@@ -3,7 +3,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from utils import read_lines, read_vocabulary
+from src.utils.utils import read_lines, read_vocabulary
 
 # Punctuation characters
 punct = set(string.punctuation)
@@ -320,14 +320,14 @@ def compute_accuracy(pred: list, y: list) -> float:
 
 def main():
     # Read training corpus and vocabulary
-    training_corpus = read_lines("data/WSJ_02-21.pos")
-    voc_l = read_vocabulary("data/hmm_vocab.txt")
+    training_corpus = read_lines("../data/WSJ_02-21.pos")
+    voc_l = read_vocabulary("../data/hmm_vocab.txt")
 
     # Get the index of the corresponding words.
     vocab = {word: i for i, word in enumerate(sorted(voc_l))}
 
     # Read test data and preprocess it
-    y = read_lines("data/WSJ_24.pos")
+    y = read_lines("../data/WSJ_24.pos")
     _, prep = preprocess(vocab, "./data/test.words")
 
     # Create dictionaries and states
