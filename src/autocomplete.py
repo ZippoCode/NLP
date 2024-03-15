@@ -1,6 +1,8 @@
 import random
 from collections import defaultdict, Counter
 from typing import List
+import pandas as pd
+import numpy as np
 
 import nltk
 
@@ -9,7 +11,7 @@ from src.utils.utils import read_file
 nltk.download('punkt')
 
 
-def get_tokenized_data(data: str) -> List[str]:
+def get_tokenized_data(data: str) -> List[List[str]]:
     """
         Split data by linebreak "\n"
     :param data: A string
@@ -92,47 +94,81 @@ def count_n_grams(data: List[List[str]], n: int, start_token='<s>', end_token='<
     return n_grams
 
 
-def estimate_probability(word: str, previous_n_gram: list, n_gram_counts: dict, n_plus1_gram_counts: dict,
-                         vocabulary_size: int, k=1.0):
+def estimate_probabilities(previous_n_gram: list, n_gram_counts: dict, n_plus1_gram_counts: dict, vocabulary: List[str],
+                           end_token='<e>', unknown_token="<unk>", k=1.0):
     """
         Estimate the probability of a next word using the n-gram counts with k-smoothing.
 
-    :param word: The next word
     :param previous_n_gram: A sequence of words of length n.
     :param n_gram_counts: Dictionary of counts of n-grams.
     :param n_plus1_gram_counts: Dictionary of counts of (n+1)-grams.
-    :param vocabulary_size: Number of words in the vocabulary.
+    :param vocabulary: List of words in the vocabulary.
+    :param end_token: Token representing the end of a sentence. Default is '<e>'.
+    :param unknown_token: Token representing unknown (out-of-vocabulary) words. Default is '<unk>'.
     :param k: Smoothing parameter. Default is 1.0.
     :return:
         - The estimated probability.
     """
-    previous_n_gram = tuple(previous_n_gram)
-    previous_n_gram_count = n_gram_counts.get(previous_n_gram, 0)
-    denominator = previous_n_gram_count + k * vocabulary_size
-
-    n_plus1_gram = previous_n_gram + (word,)
-    n_plus1_gram_count = n_plus1_gram_counts.get(n_plus1_gram, 0)
-    numerator = n_plus1_gram_count + k
-
-    probability = numerator / denominator
-
-    return probability
-
-
-def estimate_probabilities(previous_n_gram, n_gram_counts, n_plus1_gram_counts, vocabulary, end_token='<e>',
-                           unknown_token="<unk>", k=1.0):
     vocabulary = vocabulary + [end_token, unknown_token]
     vocabulary_size = len(vocabulary)
-
     probabilities = {}
-    for word in vocabulary:
-        probability = estimate_probability(word, previous_n_gram, n_gram_counts, n_plus1_gram_counts,
-                                           vocabulary_size, k=k)
 
-        probabilities[word] = probability
+    for word in vocabulary:
+
+        previous_n_gram = tuple(previous_n_gram)
+        previous_n_gram_count = n_gram_counts.get(previous_n_gram, 0)
+        denominator = previous_n_gram_count + k * vocabulary_size
+
+        n_plus1_gram = previous_n_gram + (word,)
+        n_plus1_gram_count = n_plus1_gram_counts.get(n_plus1_gram, 0)
+        numerator = n_plus1_gram_count + k
+
+        probabilities[word] = numerator / denominator
 
     return probabilities
 
+
+def make_count_matrix(n_plus1_gram_counts: dict, vocabulary: List[str]):
+    """
+        Create a count matrix from (n+1)-gram counts and a vocabulary.
+
+    :param n_plus1_gram_counts: Dictionary of counts of (n+1)-grams.
+    :param vocabulary: List of words in the vocabulary.
+    :return:
+        A DataFrame representing the count matrix.
+    """
+    # Add '<e>' and '<unk>' to the vocabulary
+    vocabulary += ["<e>", "<unk>"]
+
+    # Obtain unique n-grams
+    n_grams = {n_plus1_gram[:-1] for n_plus1_gram in n_plus1_gram_counts}
+    n_grams = list(set(n_grams))
+
+    # Mapping from n-gram to row
+    row_index = {n_gram: i for i, n_gram in enumerate(n_grams)}
+    # Mapping from next word to column
+    col_index = {word: j for j, word in enumerate(vocabulary)}
+
+    # Initialize count matrix
+    nrow, ncol = len(n_grams), len(vocabulary)
+    count_matrix = np.zeros((nrow, ncol))
+
+    # Fill count matrix with n-gram counts
+    for n_plus1_gram, count in n_plus1_gram_counts.items():
+        n_gram, word = n_plus1_gram[:-1], n_plus1_gram[-1]
+        if word not in vocabulary:
+            continue
+        i, j = row_index[n_gram], col_index[word]
+        count_matrix[i, j] = count
+
+    count_matrix = pd.DataFrame(count_matrix, index=n_grams, columns=vocabulary)
+    return count_matrix
+
+def make_probability_matrix(n_plus1_gram_counts, unique_words, k):
+    count_matrix = make_count_matrix(n_plus1_gram_counts, unique_words)
+    count_matrix += k
+    prob_matrix = count_matrix.div(count_matrix.sum(axis=1), axis=0)
+    return prob_matrix
 
 def calculate_perplexity(sentence, n_gram_counts, n_plus1_gram_counts, vocabulary_size, start_token='<s>',
                          end_token='<e>', k=1.0):
@@ -175,3 +211,20 @@ def run():
 
     minimum_freq = 2
     train_data_processed, test_data_processed, vocabulary = preprocess_data(train_data, test_data, minimum_freq)
+
+
+    sentences = [['i', 'like', 'a', 'cat'],
+                     ['this', 'dog', 'is', 'like', 'a', 'cat']]
+    unique_words = list(set(sentences[0] + sentences[1]))
+    bigram_counts = count_n_grams(sentences, 2)
+
+    print('bigram counts')
+    print('\ntrigram counts')
+    trigram_counts = count_n_grams(sentences, 3)
+    print(make_count_matrix(trigram_counts, unique_words))
+    sentences = [['i', 'like', 'a', 'cat'],
+                 ['this', 'dog', 'is', 'like', 'a', 'cat']]
+    unique_words = list(set(sentences[0] + sentences[1]))
+    bigram_counts = count_n_grams(sentences, 2)
+    print("bigram probabilities")
+    print(make_probability_matrix(bigram_counts, unique_words, k=1))
