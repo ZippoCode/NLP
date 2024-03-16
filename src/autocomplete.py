@@ -94,6 +94,33 @@ def count_n_grams(data: List[List[str]], n: int, start_token='<s>', end_token='<
     return n_grams
 
 
+def estimate_probability(word: str, previous_n_gram: list, n_gram_counts: dict, n_plus1_gram_counts: dict,
+                         vocabulary_size: int, k=1.0) -> float:
+    """
+        Estimate the probability of a next word using the n-gram counts with k-smoothing.
+
+    :param word: The next word
+    :param previous_n_gram: A sequence of words of length n.
+    :param n_gram_counts: Dictionary of counts of n-grams.
+    :param n_plus1_gram_counts: Dictionary of counts of (n+1)-grams.
+    :param vocabulary_size: Number of words in the vocabulary.
+    :param k: Smoothing parameter. Default is 1.0.
+    :return:
+        - The estimated probability.
+    """
+    previous_n_gram = tuple(previous_n_gram)
+    previous_n_gram_count = n_gram_counts.get(previous_n_gram, 0)
+    denominator = previous_n_gram_count + k * vocabulary_size
+
+    n_plus1_gram = previous_n_gram + (word,)
+    n_plus1_gram_count = n_plus1_gram_counts.get(n_plus1_gram, 0)
+    numerator = n_plus1_gram_count + k
+
+    probability = numerator / denominator
+
+    return probability
+
+
 def estimate_probabilities(previous_n_gram: list, n_gram_counts: dict, n_plus1_gram_counts: dict, vocabulary: List[str],
                            end_token='<e>', unknown_token="<unk>", k=1.0):
     """
@@ -114,16 +141,8 @@ def estimate_probabilities(previous_n_gram: list, n_gram_counts: dict, n_plus1_g
     probabilities = {}
 
     for word in vocabulary:
-
-        previous_n_gram = tuple(previous_n_gram)
-        previous_n_gram_count = n_gram_counts.get(previous_n_gram, 0)
-        denominator = previous_n_gram_count + k * vocabulary_size
-
-        n_plus1_gram = previous_n_gram + (word,)
-        n_plus1_gram_count = n_plus1_gram_counts.get(n_plus1_gram, 0)
-        numerator = n_plus1_gram_count + k
-
-        probabilities[word] = numerator / denominator
+        probability = estimate_probability(word, previous_n_gram, n_gram_counts, n_plus1_gram_counts, vocabulary_size, k=k)
+        probabilities[word] = probability
 
     return probabilities
 
@@ -170,32 +189,34 @@ def make_probability_matrix(n_plus1_gram_counts, unique_words, k):
     prob_matrix = count_matrix.div(count_matrix.sum(axis=1), axis=0)
     return prob_matrix
 
+
 def calculate_perplexity(sentence, n_gram_counts, n_plus1_gram_counts, vocabulary_size, start_token='<s>',
                          end_token='<e>', k=1.0):
     """
-    Calculate perplexity for a list of sentences
+            Calculate perplexity for a list of sentences
 
-    Args:
-        sentence: List of strings
-        n_gram_counts: Dictionary of counts of n-grams
-        n_plus1_gram_counts: Dictionary of counts of (n+1)-grams
-        vocabulary_size: number of unique words in the vocabulary
-        k: Positive smoothing constant
+    :param sentence: List of strings representing a sentence.
+    :param n_gram_counts: Dictionary of counts of n-grams.
+    :param n_plus1_gram_counts: Dictionary of counts of (n+1)-grams.
+    :param vocabulary_size: Number of unique words in the vocabulary.
+    :param start_token: Start token. Default is '<s>'.
+    :param end_token: End token. Default is '<e>'.
+    :param k: Positive smoothing constant. Default is 1.0.
 
-    Returns:
-        Perplexity score
+    :return:
+        - perplexity: Perplexity score (float)
     """
     n = len(list(n_gram_counts.keys())[0])
     sentence = [start_token] * n + sentence + [end_token]
     sentence = tuple(sentence)
-    N = len(sentence)
+    num_words = len(sentence)
     product_pi = 1.0
-    for t in range(None, None):
-        n_gram = None
-        word = None
-        probability = None
-        product_pi *= None
-    perplexity = (product_pi) ** (1 / N)
+    for t in range(n, num_words):
+        n_gram = sentence[t - n: t]
+        word = sentence[t]
+        probability = estimate_probability(word, n_gram, n_gram_counts, n_plus1_gram_counts, vocabulary_size, k)
+        product_pi *= 1 / probability
+    perplexity = product_pi ** (1 / num_words)
     return perplexity
 
 
@@ -211,20 +232,35 @@ def run():
 
     minimum_freq = 2
     train_data_processed, test_data_processed, vocabulary = preprocess_data(train_data, test_data, minimum_freq)
-
-
-    sentences = [['i', 'like', 'a', 'cat'],
-                     ['this', 'dog', 'is', 'like', 'a', 'cat']]
-    unique_words = list(set(sentences[0] + sentences[1]))
-    bigram_counts = count_n_grams(sentences, 2)
-
-    print('bigram counts')
-    print('\ntrigram counts')
-    trigram_counts = count_n_grams(sentences, 3)
-    print(make_count_matrix(trigram_counts, unique_words))
+    # test your code
     sentences = [['i', 'like', 'a', 'cat'],
                  ['this', 'dog', 'is', 'like', 'a', 'cat']]
     unique_words = list(set(sentences[0] + sentences[1]))
+    unigram_counts = count_n_grams(sentences, 1)
     bigram_counts = count_n_grams(sentences, 2)
-    print("bigram probabilities")
-    print(make_probability_matrix(bigram_counts, unique_words, k=1))
+
+    print(estimate_probabilities(["a"], unigram_counts, bigram_counts, unique_words, k=1))
+    # Additional test
+    trigram_counts = count_n_grams(sentences, 3)
+    print(estimate_probabilities(["<s>", "<s>"], bigram_counts, trigram_counts, unique_words, k=1))
+    # test your code
+
+    sentences = [['i', 'like', 'a', 'cat'],
+                 ['this', 'dog', 'is', 'like', 'a', 'cat']]
+    unique_words = list(set(sentences[0] + sentences[1]))
+
+    unigram_counts = count_n_grams(sentences, 1)
+    bigram_counts = count_n_grams(sentences, 2)
+
+    perplexity_train = calculate_perplexity(sentences[0],
+                                            unigram_counts, bigram_counts,
+                                            len(unique_words), k=1.0)
+    print(f"Perplexity for first train sample: {perplexity_train:.4f}")
+
+    test_sentence = ['i', 'like', 'a', 'dog']
+    perplexity_test = calculate_perplexity(test_sentence,
+                                           unigram_counts, bigram_counts,
+                                           len(unique_words), k=1.0)
+    print(f"Perplexity for test sample: {perplexity_test:.4f}")
+
+
